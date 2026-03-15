@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Menu, X, Compass, Map, Users, MessageCircle, BookOpen, User } from "lucide-react";
+import { Link } from 'react-router-dom'
 
 const Navbar = ({ user }) => {
     const [open, setOpen] = useState(false);
