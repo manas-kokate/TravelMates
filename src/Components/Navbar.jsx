@@ -88,7 +88,7 @@ const Navbar = ({ user }) => {
                                     Login
                                 </a>
                                 <a
-                                    href="/register"
+                                    href="/signup"
                                     className="bg-[#5E0006] text-[#FFF8F0] px-4 py-1.5 rounded-full font-medium shadow hover:scale-105 transition-all duration-300"
                                 >
                                     Sign Up
