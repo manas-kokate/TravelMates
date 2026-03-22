@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Menu, X, Compass, Map, Users, MessageCircle, BookOpen, User } from "lucide-react";
+import { Menu, X, Compass, Map, User, Info } from "lucide-react";
 import { Link } from 'react-router-dom'
 
 const Navbar = ({ user }) => {
@@ -16,9 +16,7 @@ const Navbar = ({ user }) => {
     const navLinks = [
         { name: "Home", href: "/", icon: Compass },
         { name: "Discover", href: "/discover", icon: Map },
-        { name: "Travel Blogs", href: "/blogs", icon: BookOpen },
-        { name: "Find Companions", href: "/companions", icon: Users },
-        { name: "Messages", href: "/chat", icon: MessageCircle },
+        { name: "About us", href: "/about", icon: Info }
     ];
 
     return (

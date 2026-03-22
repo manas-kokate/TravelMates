@@ -9,7 +9,7 @@ import { Routes, Route, useLocation } from 'react-router-dom'
 import Login from './Pages/Login.jsx'
 import Signup from './Pages/Signup.jsx'
 import Discover from './Pages/Discover.jsx'
-import Blogs from './Components/Blogs.jsx'
+import About from './Pages/About.jsx'
 
 function App() {
   const [count, setCount] = useState(0)
@@ -27,7 +27,7 @@ function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path='/discover' element={<Discover />} />
-          <Route path='/blogs' element={<Blogs />} />
+          <Route path='/about' element={<About />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
         </Routes>

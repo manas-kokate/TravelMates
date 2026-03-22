@@ -92,11 +92,6 @@ const Footer = () => {
                     </p>
 
                     <div className="flex mt-5">
-                        <input
-                            type="email"
-                            placeholder="Enter your email"
-                            className="w-full px-4 py-2 rounded-l-full text-[#5E0006] outline-none"
-                        />
                         <button className="bg-[#FFF8F0] text-[#5E0006] px-5 py-2 rounded-r-full font-semibold hover:opacity-90 transition">
                             Join
                         </button>

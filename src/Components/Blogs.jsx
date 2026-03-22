@@ -6,6 +6,7 @@ import {
     ArrowRight,
     Filter
 } from "lucide-react";
+import TravelBlogs from "./TravelBlogs";
 
 const blogsData = [
     {
@@ -115,147 +116,9 @@ export default function Blogs() {
     return (
         <section className="min-h-screen bg-[#FFF8F0] text-[#5E0006] px-6 md:px-16 py-16">
 
-            {/* HEADER */}
-            <div className="max-w-7xl mx-auto mb-10">
-                <h1 className="text-4xl font-bold">Explore Travel Blogs</h1>
-                <p className="opacity-70 mt-2">Discover stories from travelers 🌍</p>
-            </div>
-
-            {/* SEARCH + FILTERS */}
-            <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-4 mb-10">
-
-                {/* SEARCH */}
-                <div className="relative flex-1">
-                    <Search className="absolute top-3 left-3 text-[#5E0006]/60" size={18} />
-                    <input
-                        type="text"
-                        placeholder="Search blogs..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 border border-[#5E0006]/20 rounded-lg bg-white outline-none focus:ring-2 focus:ring-[#5E0006]"
-                    />
-                </div>
-
-                {/* FILTERS */}
-                <div className="flex flex-wrap gap-3">
-
-                    {/* PLACE */}
-                    <select
-                        value={place}
-                        onChange={(e) => setPlace(e.target.value)}
-                        className="px-3 py-2 border border-[#5E0006]/20 rounded-lg bg-white text-sm"
-                    >
-                        <option value="">All Places</option>
-                        <option value="Coorg">Coorg</option>
-                        <option value="Santorini">Santorini</option>
-                    </select>
-
-                    {/* CATEGORY */}
-                    <select
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                        className="px-3 py-2 border border-[#5E0006]/20 rounded-lg bg-white text-sm"
-                    >
-                        <option value="">All Features</option>
-                        <option value="Nature">Nature</option>
-                        <option value="Romantic">Romantic</option>
-                    </select>
-
-                    {/* SORT */}
-                    <select
-                        value={sort}
-                        onChange={(e) => setSort(e.target.value)}
-                        className="px-3 py-2 border border-[#5E0006]/20 rounded-lg bg-white text-sm"
-                    >
-                        <option value="latest">Latest First</option>
-                        <option value="oldest">Oldest First</option>
-                    </select>
-
-                </div>
-            </div>
-
             {/* BLOG LIST */}
-            <div className="max-w-7xl mx-auto space-y-8">
-                {filteredBlogs.map((blog) => (
-                    <div
-                        key={blog.id}
-                        className="flex flex-col md:flex-row bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition duration-300 h-65"
-                    >
+            <TravelBlogs />
 
-                        {/* IMAGE */}
-                        <div className="md:w-[35%] h-full">
-                            <img
-                                src={blog.image}
-                                alt={blog.title}
-                                className="w-full h-full object-cover"
-                            />
-                        </div>
-
-                        {/* CONTENT */}
-                        <div className="md:w-[65%] p-6 flex flex-col justify-between">
-
-                            {/* TOP CONTENT */}
-                            <div>
-                                {/* META */}
-                                <div className="flex items-center gap-3 text-xs opacity-70">
-                                    <span className="bg-[#5E0006]/10 px-2 py-1 rounded-full">
-                                        {blog.category}
-                                    </span>
-                                    <span>{blog.date}</span>
-                                    <span>•</span>
-                                    <span>{blog.readTime}</span>
-                                </div>
-
-                                {/* TITLE */}
-                                <h2 className="text-xl md:text-2xl font-semibold mt-2">
-                                    {blog.title}
-                                </h2>
-
-                                {/* DESC */}
-                                <p className="mt-2 text-sm opacity-80 line-clamp-2">
-                                    {blog.desc}
-                                </p>
-
-                                {/* LOCATION */}
-                                <div className="flex items-center gap-1 mt-3 text-sm opacity-70">
-                                    <MapPin size={14} /> {blog.location}
-                                </div>
-                            </div>
-
-                            {/* BOTTOM ROW */}
-                            <div className="flex items-center justify-between mt-4">
-
-                                {/* AUTHOR SECTION */}
-                                <div className="flex items-center gap-3 max-w-[70%]">
-
-                                    <img
-                                        src={`https://ui-avatars.com/api/?name=${blog.title}`}
-                                        alt="author"
-                                        className="w-10 h-10 rounded-full object-cover border border-[#5E0006]/20"
-                                    />
-
-                                    <div className="text-sm">
-                                        <p className="font-medium">{blog.author}</p>
-                                        <p className="text-xs opacity-70 italic line-clamp-1">
-                                            “{blog.quote || "This place changed my perspective completely."}”
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {/* BUTTON */}
-                                <button className="group flex items-center gap-2 border border-[#5E0006] text-[#5E0006] px-5 py-2 rounded-lg hover:bg-[#5E0006] hover:text-[#FFF8F0] transition">
-                                    Read More
-                                    <ArrowRight
-                                        size={16}
-                                        className="transition-transform group-hover:translate-x-2"
-                                    />
-                                </button>
-
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
         </section>
     );
 }
