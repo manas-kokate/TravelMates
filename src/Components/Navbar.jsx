@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Menu, X, Compass, Map, User, Info } from "lucide-react";
+import { Menu, X, Compass, Map, User, Info, MessageCircle, Users } from "lucide-react";
 import { Link } from 'react-router-dom'
 
 const Navbar = ({ user }) => {
@@ -12,6 +12,8 @@ const Navbar = ({ user }) => {
         window.addEventListener("scroll", handleScroll);
         return () => window.removeEventListener("scroll", handleScroll);
     }, []);
+
+    user = false; // Mock user for testing - replace with actual auth logic
 
     const navLinks = [
         { name: "Home", href: "/", icon: Compass },
@@ -62,37 +64,21 @@ const Navbar = ({ user }) => {
 
                     {/* Auth Section */}
                     <div className="hidden lg:flex items-center gap-4">
-                        {user ? (
-                            <motion.a
-                                href="/profile"
-                                whileHover={{ scale: 1.05 }}
-                                className="flex items-center gap-2 bg-[#5E0006]/10 px-3 py-1.5 rounded-full border border-[#5E0006]/20"
+                        <>
+                            <a
+                                href="/login"
+                                className="text-[#5E0006] font-medium hover:opacity-80 transition"
                             >
-                                <img
-                                    src={user?.avatar || "https://i.pravatar.cc/40"}
-                                    alt="profile"
-                                    className="w-8 h-8 rounded-full object-cover"
-                                />
-                                <span className="text-sm text-[#5E0006]">
-                                    {user?.name || "Profile"}
-                                </span>
-                            </motion.a>
-                        ) : (
-                            <>
-                                <a
-                                    href="/login"
-                                    className="text-[#5E0006] font-medium hover:opacity-80 transition"
-                                >
-                                    Login
-                                </a>
-                                <a
-                                    href="/signup"
-                                    className="bg-[#5E0006] text-[#FFF8F0] px-4 py-1.5 rounded-full font-medium shadow hover:scale-105 transition-all duration-300"
-                                >
-                                    Sign Up
-                                </a>
-                            </>
-                        )}
+                                Login
+                            </a>
+
+                            <a
+                                href="/signup"
+                                className="bg-[#5E0006] text-[#FFF8F0] px-5 py-2 rounded-lg font-medium shadow hover:scale-105 transition"
+                            >
+                                Sign Up
+                            </a>
+                        </>
                     </div>
 
                     {/* Mobile Toggle */}

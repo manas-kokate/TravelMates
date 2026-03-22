@@ -10,11 +10,13 @@ import Login from './Pages/Login.jsx'
 import Signup from './Pages/Signup.jsx'
 import Discover from './Pages/Discover.jsx'
 import About from './Pages/About.jsx'
+import Messages from './Pages/Messages.jsx'
+import Dashboard from './Pages/Dashboard.jsx'
 
 function App() {
   const [count, setCount] = useState(0)
   const location = useLocation();
-  const hideNavFooter = (location.pathname === '/login') || (location.pathname === '/signup');
+  const hideNavFooter = (location.pathname === '/login') || (location.pathname === '/signup') || (location.pathname === '/dashboard');
 
   // color Theme: Primary #5E0006 and secondary : #FFF8F0 
 
@@ -30,6 +32,8 @@ function App() {
           <Route path='/about' element={<About />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/messages" element={<Messages />} />
+          <Route path='/dashboard' element={<Dashboard />} />
         </Routes>
       </div>
 

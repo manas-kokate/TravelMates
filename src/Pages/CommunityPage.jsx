@@ -29,6 +29,13 @@ const postsData = [
         content: "Flights, villas, and beaches within budget!",
         image: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e",
     },
+    {
+        id: 4,
+        title: "Budget Bali Trip Guide ✈️",
+        author: "Sneha",
+        content: "Flights, villas, and beaches within budget!",
+        image: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e",
+    }
 ];
 
 const CommunityPage = () => {
@@ -61,10 +68,6 @@ const CommunityPage = () => {
                     onChange={(e) => setSearch(e.target.value)}
                     className="px-4 py-2 border border-[#5E0006]/30 rounded-lg w-full md:w-1/2 outline-none"
                 />
-
-                <button className="bg-[#5E0006] text-[#FFF8F0] px-6 py-2 rounded-lg font-semibold hover:scale-105 transition">
-                    + Share Your Story
-                </button>
             </div>
 
             {/* BLOG GRID */}
