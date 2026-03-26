@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { Home } from "lucide-react";
+import { useLocation } from "react-router-dom";
 
 const Login = () => {
     const [form, setForm] = useState({
@@ -8,6 +9,7 @@ const Login = () => {
         password: "",
     });
 
+    const location = useLocation();
     const handleChange = (e) => {
         setForm({
             ...form,
@@ -17,7 +19,7 @@ const Login = () => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        console.log(form);
+        location.pathname = "/dashboard";
     };
 
     return (
@@ -88,7 +90,7 @@ const Login = () => {
                             type="submit"
                             className="w-full bg-[#5E0006] text-[#FFF8F0] py-3 rounded-lg font-semibold hover:scale-105 transition"
                         >
-                            Login
+                            <Link to="/dashboard">Login</Link>
                         </button>
                     </form>
 

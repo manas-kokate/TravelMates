@@ -1,10 +1,15 @@
 import { useState } from "react";
 import {
     Compass, LayoutDashboard, BookOpen, Users, MessageSquare,
-    UserCircle, LogOut, Bell, Menu, X, Search,
+    UserCircle, LogOut, Bell, Menu, X, Search, MessageCircle, WandSparkles
 } from "lucide-react";
 import DashboardHome from "../Components/DasboardHome";
 import ShareBlog from "../Components/ShareBlog";
+import FindCompanions from "../Components/FindCompanions";
+import Chats from "../Components/Chats";
+import CommunityReviews from "../Components/CommunityReviews";
+import UserProfile from "../Components/UserProfile";
+import TripioPlanner from "../Components/TripioPlanner";
 
 // ── Nav items ─────────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
@@ -12,7 +17,9 @@ const NAV_ITEMS = [
     { id: "blogs", label: "Share Blogs", icon: BookOpen },
     { id: "companions", label: "Find Companions", icon: Users },
     { id: "community", label: "Community & Reviews", icon: MessageSquare },
+    { id: "chats", label: "Chats", icon: MessageCircle },
     { id: "profile", label: "User Profile", icon: UserCircle },
+    { id: "tripio", label: "Tripio (AI Trip Planner)", icon: WandSparkles }
 ];
 
 // ── Placeholder (remove once real components are plugged in) ─────────────────
@@ -177,28 +184,31 @@ export default function Dashboard() {
                 <main key={active} className="flex-1 overflow-y-auto p-8">
 
                     {active === "dashboard" && (
-                        // ✅ Replace <Placeholder /> with your <DashboardPage /> component
                         <DashboardHome />
                     )}
 
                     {active === "blogs" && (
-                        // ✅ Replace <Placeholder /> with your <ShareBlogs /> component
                         <ShareBlog />
                     )}
 
                     {active === "companions" && (
-                        // ✅ Replace <Placeholder /> with your <FindCompanions /> component
-                        <Placeholder label="Find Companions" />
+                        <FindCompanions />
+                    )}
+
+                    {active === "chats" && (
+                        <Chats />
                     )}
 
                     {active === "community" && (
-                        // ✅ Replace <Placeholder /> with your <CommunityReviews /> component
-                        <Placeholder label="Community & Reviews" />
+                        <CommunityReviews />
                     )}
 
                     {active === "profile" && (
-                        // ✅ Replace <Placeholder /> with your <UserProfile /> component
-                        <Placeholder label="User Profile" />
+                        <UserProfile />
+                    )}
+
+                    {active === "tripio" && (
+                        <TripioPlanner />
                     )}
 
                 </main>

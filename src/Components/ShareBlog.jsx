@@ -504,8 +504,8 @@ export default function ShareBlog() {
                                         key={label}
                                         onClick={() => set("category", form.category === label ? "" : label)}
                                         className={`flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium border transition-all ${form.category === label
-                                                ? "bg-[#7a1a1a] text-white border-[#7a1a1a] shadow-sm"
-                                                : "bg-[#fdf8f4] text-[#5a3030] border-[#e8d5cc] hover:border-[#c0857a]"
+                                            ? "bg-[#7a1a1a] text-white border-[#7a1a1a] shadow-sm"
+                                            : "bg-[#fdf8f4] text-[#5a3030] border-[#e8d5cc] hover:border-[#c0857a]"
                                             }`}
                                     >
                                         <span>{emoji}</span> {label}
@@ -560,8 +560,8 @@ export default function ShareBlog() {
                                         key={m}
                                         onClick={() => set("mood", form.mood === m ? "" : m)}
                                         className={`text-xs px-2.5 py-1.5 rounded-full border transition-all ${form.mood === m
-                                                ? "bg-[#7a1a1a] text-white border-[#7a1a1a]"
-                                                : "bg-[#fdf8f4] text-[#5a3030] border-[#e8d5cc] hover:border-[#c0857a]"
+                                            ? "bg-[#7a1a1a] text-white border-[#7a1a1a]"
+                                            : "bg-[#fdf8f4] text-[#5a3030] border-[#e8d5cc] hover:border-[#c0857a]"
                                             }`}
                                     >
                                         {m}
@@ -612,8 +612,8 @@ export default function ShareBlog() {
                                 onClick={handlePublish}
                                 disabled={!canPublish}
                                 className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all ${canPublish
-                                        ? "bg-[#7a1a1a] text-white hover:bg-[#5a0e0e] shadow-md hover:shadow-lg active:scale-[0.98]"
-                                        : "bg-[#e8d5cc] text-[#b09090] cursor-not-allowed"
+                                    ? "bg-[#7a1a1a] text-white hover:bg-[#5a0e0e] shadow-md hover:shadow-lg active:scale-[0.98]"
+                                    : "bg-[#e8d5cc] text-[#b09090] cursor-not-allowed"
                                     }`}
                             >
                                 <Send size={15} /> Publish Blog
