@@ -1,14 +1,59 @@
 import { useState, useRef, useEffect } from "react";
 import {
     MapPin, Search, Heart, MessageCircle, Share2, Bookmark,
-    Clock, Users, X, Compass, Filter, TrendingUp, Globe
+    Clock, X, Compass, Filter, Globe
 } from "lucide-react";
+import { toast } from "react-toastify";
+import { getBlogs } from "../api/blog.api.js";
+import { normalizeImageSrc } from "../utils/imageUrl.js";
+
+function firstImageUrlFromBlog(b) {
+    const cover = b.coverImage;
+    if (typeof cover === "string" && cover.trim()) return cover.trim();
+    const first = Array.isArray(b.images) ? b.images[0] : null;
+    if (!first) return "";
+    if (typeof first === "string") return first.trim();
+    return (first.url || "").trim();
+}
+
+function mapBlogForCard(b) {
+    const rawImg = firstImageUrlFromBlog(b);
+    const authorPic = b.author?.profilePic ? normalizeImageSrc(b.author.profilePic) : "";
+    return {
+        _id: b._id,
+        title: b.title,
+        body: b.story,
+        image: normalizeImageSrc(rawImg),
+        location: b.location || "—",
+        tag: b.category || "Travel",
+        createdAt: b.createdAt
+            ? new Date(b.createdAt).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+            })
+            : "",
+        user: {
+            name: b.author?.username || "Traveler",
+            profilePic: authorPic,
+        },
+        comments: [],
+        likes: 0,
+    };
+}
 
 // ── Blog Card ────────────────────────────────────────────────────────────────
 function BlogCard({ blog, idx }) {
     const [liked, setLiked] = useState(false);
     const [saved, setSaved] = useState(false);
     const [likes, setLikes] = useState(blog.likes || 0);
+    const [coverOk, setCoverOk] = useState(true);
+    const [authorImgFailed, setAuthorImgFailed] = useState(false);
+
+    useEffect(() => {
+        setCoverOk(true);
+        setAuthorImgFailed(false);
+    }, [blog._id, blog.image, blog.user?.profilePic]);
 
     const toggleLike = () => {
         setLiked((l) => !l);
@@ -19,8 +64,18 @@ function BlogCard({ blog, idx }) {
         <article className="bg-white rounded-2xl overflow-hidden shadow-sm border border-[#f0e4db] hover:shadow-md transition">
             {/* Header */}
             <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-                <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-xs font-bold text-white">
-                    {blog.user?.name?.slice(0, 2)?.toUpperCase()}
+                <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-xs font-bold text-white overflow-hidden shrink-0">
+                    {blog.user?.profilePic && !authorImgFailed ? (
+                        <img
+                            src={blog.user.profilePic}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                            onError={() => setAuthorImgFailed(true)}
+                        />
+                    ) : (
+                        <span>{blog.user?.name?.slice(0, 2)?.toUpperCase()}</span>
+                    )}
                 </div>
                 <div className="flex-1">
                     <p className="text-sm font-semibold">{blog.user?.name}</p>
@@ -37,9 +92,16 @@ function BlogCard({ blog, idx }) {
             </div>
 
             {/* Image */}
-            {blog.image && (
-                <img src={blog.image} className="w-full h-52 object-cover px-4 rounded-xl" />
-            )}
+            {blog.image && coverOk ? (
+                <img
+                    src={blog.image}
+                    alt=""
+                    className="w-full h-52 object-cover px-4 rounded-xl"
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
+                    onError={() => setCoverOk(false)}
+                />
+            ) : null}
 
             {/* Body */}
             <div className="px-4 py-2">
@@ -83,35 +145,52 @@ export default function DashboardHome() {
 
     const filters = ["All", "Trek Diary", "Food Journey", "Culture Trail", "Island Hopping"];
 
-    // ── FETCH BLOGS ─────────────────────────────────────────────────────────
-    const fetchBlogs = ({ page, activeFilter, searchQuery }) => {
-        let params = {
-            page,
-            limit: 6,
+    // ── FETCH BLOGS (GET /api/auth/getBlogs) ────────────────────────────────
+    useEffect(() => {
+        let cancelled = false;
+        const t = setTimeout(() => {
+            (async () => {
+                setLoading(true);
+                try {
+                    const params = {
+                        page,
+                        limit: 6,
+                    };
+                    if (activeFilter !== "All") {
+                        params.category = activeFilter;
+                    }
+                    const q = searchQuery.trim();
+                    if (q) params.search = q;
+
+                    const { data } = await getBlogs(params);
+                    if (cancelled) return;
+                    if (data?.success) {
+                        setBlogs((data.data || []).map(mapBlogForCard));
+                        setTotalPages(data.totalPages || 1);
+                    } else {
+                        setBlogs([]);
+                        toast.error(data?.message || "Could not load blogs");
+                    }
+                } catch (e) {
+                    if (!cancelled) {
+                        setBlogs([]);
+                        toast.error(
+                            e?.response?.data?.message ||
+                                e?.message ||
+                                "Could not load blogs"
+                        );
+                    }
+                } finally {
+                    if (!cancelled) setLoading(false);
+                }
+            })();
+        }, searchQuery.trim() ? 400 : 0);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(t);
         };
-
-        if (activeFilter !== "All") {
-            params.tag = activeFilter;
-        }
-
-        if (searchQuery.trim()) {
-            params.search = searchQuery;
-        }
-
-        return API.get("/blogs", { params });
-    };
-
-    // ── EFFECTS ─────────────────────────────────────────────────────────────
-    useEffect(() => {
-        fetchBlogs();
-    }, [page, activeFilter]);
-
-    useEffect(() => {
-        const delay = setTimeout(() => {
-            fetchBlogs();
-        }, 500);
-        return () => clearTimeout(delay);
-    }, [searchQuery]);
+    }, [page, activeFilter, searchQuery]);
 
     // ── UI ──────────────────────────────────────────────────────────────────
     return (

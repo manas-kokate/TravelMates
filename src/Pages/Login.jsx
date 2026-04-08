@@ -43,8 +43,11 @@ const Login = () => {
                 return;
             }
 
-            // ✅ store token
+            // ✅ store token + user (for chats / socket user id)
             localStorage.setItem("token", res.data.accessToken);
+            if (res.data.user) {
+                localStorage.setItem("user", JSON.stringify(res.data.user));
+            }
 
             toast.success(res.data.message || "Login successful!");
 

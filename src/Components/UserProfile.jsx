@@ -1,4 +1,14 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { toast } from "react-toastify";
+import { getCurrentUser } from "../api/auth.api.js";
+import {
+    getConnections,
+    getConnectionRequests,
+    sendConnectionRequest,
+    respondToConnectionRequest,
+    searchUsers,
+} from "../api/social.api.js";
+import { normalizeImageSrc } from "../utils/imageUrl.js";
 import {
     Camera, Edit3, MapPin, Globe, Calendar, Star, BookOpen,
     Users, Heart, Award, Shield, Check, X, Plus, Trash2,
@@ -9,6 +19,8 @@ import {
 
 // ── Initial user data ─────────────────────────────────────────────────────────
 const INITIAL_USER = {
+    _id: null,
+    profilePicUrl: null,
     name: "Arjun Kulkarni",
     handle: "@arjun.travels",
     email: "arjun.kulkarni@gmail.com",
@@ -73,15 +85,6 @@ const MY_REVIEWS = [
     },
 ];
 
-const CONNECTIONS = [
-    { name: "Priya Sharma", handle: "@priyatravels", avatar: "PS", avatarBg: "from-rose-400 to-pink-600", location: "Santorini 🇬🇷", active: true },
-    { name: "Rahul Kapoor", handle: "@rahul_onroad", avatar: "RK", avatarBg: "from-amber-400 to-orange-500", location: "Kyoto 🇯🇵", active: true },
-    { name: "Ananya Mehta", handle: "@ananya.wanders", avatar: "AM", avatarBg: "from-teal-400 to-cyan-600", location: "Patagonia 🇦🇷", active: false },
-    { name: "Vikram Nair", handle: "@vikram_nomad", avatar: "VN", avatarBg: "from-violet-400 to-purple-600", location: "Marrakech 🇲🇦", active: false },
-    { name: "Sneha Iyer", handle: "@sneha.roams", avatar: "SI", avatarBg: "from-lime-400 to-green-600", location: "Lisbon 🇵🇹", active: true },
-    { name: "Dev Malhotra", handle: "@devexplores", avatar: "DM", avatarBg: "from-sky-400 to-blue-600", location: "Reykjavik 🇮🇸", active: false },
-];
-
 const VISITED = [
     { name: "Japan", flag: "🇯🇵", year: 2025 },
     { name: "Greece", flag: "🇬🇷", year: 2025 },
@@ -125,6 +128,43 @@ function PrivacyToggle({ label, on, onToggle }) {
 }
 
 const TABS = ["Overview", "Blogs", "Reviews", "Connections", "Visited"];
+
+function mapApiUserToProfile(u) {
+    if (!u) return { ...INITIAL_USER };
+    const name = u.username || "Traveler";
+    return {
+        ...INITIAL_USER,
+        _id: u._id,
+        profilePicUrl: u.profilePic ? normalizeImageSrc(u.profilePic) : null,
+        name,
+        handle: `@${name.replace(/\s+/g, "").toLowerCase()}`,
+        email: u.email || "",
+        location: u.location || "",
+        interests: Array.isArray(u.interests) ? u.interests : [],
+        joined: u.createdAt
+            ? new Date(u.createdAt).toLocaleDateString(undefined, { month: "long", year: "numeric" })
+            : INITIAL_USER.joined,
+    };
+}
+
+function mapConnectionToPeer(conn, myId) {
+    const s = conn.senderId;
+    const r = conn.receiverId;
+    const sid = s?._id ?? s;
+    const other = String(sid) === String(myId) ? r : s;
+    const o = other && typeof other === "object" ? other : {};
+    const username = o.username || "Traveler";
+    return {
+        id: String(o._id || ""),
+        name: username,
+        handle: `@${username.replace(/\s+/g, "").toLowerCase()}`,
+        avatar: username.slice(0, 2).toUpperCase(),
+        avatarBg: "from-rose-400 to-pink-600",
+        location: o.location || "—",
+        profilePic: o.profilePic ? normalizeImageSrc(o.profilePic) : null,
+        active: false,
+    };
+}
 
 // ── Star Row ──────────────────────────────────────────────────────────────────
 const StarRow = ({ rating, size = 13 }) => (
@@ -398,22 +438,142 @@ export default function UserProfile() {
     const [user, setUser] = useState(INITIAL_USER);
     const [activeTab, setTab] = useState("Overview");
     const [showEdit, setEdit] = useState(false);
-    const [toast, setToast] = useState(false);
+    const [showSaveToast, setShowSaveToast] = useState(false);
+    const [profileLoading, setProfileLoading] = useState(true);
+    const [acceptedPeers, setAcceptedPeers] = useState([]);
+    const [receivedReqs, setReceivedReqs] = useState([]);
+    const [sentReqs, setSentReqs] = useState([]);
+    const [findName, setFindName] = useState("");
+    const [searchResults, setSearchResults] = useState([]);
+    const [searchBusy, setSearchBusy] = useState(false);
+    const [connectBusyId, setConnectBusyId] = useState(null);
+
+    const reloadConnections = useCallback(async (myId) => {
+        if (!myId) return;
+        try {
+            const [connRes, reqRes] = await Promise.all([getConnections(), getConnectionRequests()]);
+            if (connRes.data.status === 200) {
+                setAcceptedPeers((connRes.data.connections || []).map((c) => mapConnectionToPeer(c, myId)));
+            }
+            if (reqRes.data.status === 200) {
+                setReceivedReqs(reqRes.data.receivedRequests || []);
+                setSentReqs(reqRes.data.sentRequests || []);
+            }
+        } catch {
+            toast.error("Could not refresh connections");
+        }
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            setProfileLoading(true);
+            try {
+                const { data } = await getCurrentUser();
+                if (cancelled) return;
+                if (data.status !== 200) {
+                    toast.error(data.message || "Could not load profile");
+                    return;
+                }
+                const mapped = mapApiUserToProfile(data.user);
+                setUser(mapped);
+                localStorage.setItem("user", JSON.stringify(data.user));
+                window.dispatchEvent(new Event("travelmates:user-updated"));
+                const myId = data.user._id;
+                await reloadConnections(myId);
+            } catch {
+                if (!cancelled) toast.error("Could not load profile");
+            } finally {
+                if (!cancelled) setProfileLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [reloadConnections]);
 
     const handleSave = (updated) => {
         setUser(updated);
-        setToast(true);
-        setTimeout(() => setToast(false), 3000);
+        setShowSaveToast(true);
+        setTimeout(() => setShowSaveToast(false), 3000);
+    };
+
+    const handleSearchTravelers = async () => {
+        if (!findName.trim()) {
+            toast.warning("Enter a name to search");
+            return;
+        }
+        setSearchBusy(true);
+        try {
+            const { data } = await searchUsers({
+                name: findName.trim(),
+                limit: 15,
+                page: 1,
+            });
+            if (data.status === 200) {
+                setSearchResults(data.users || []);
+                if (!(data.users || []).length) toast.info("No travelers matched that name");
+            } else {
+                toast.error(data.message || "Search failed");
+            }
+        } catch {
+            toast.error("Search failed");
+        } finally {
+            setSearchBusy(false);
+        }
+    };
+
+    const myUserId = () =>
+        user._id ||
+        (() => {
+            try {
+                return JSON.parse(localStorage.getItem("user") || "null")?._id;
+            } catch {
+                return null;
+            }
+        })();
+
+    const handleSendRequest = async (receiverId) => {
+        setConnectBusyId(String(receiverId));
+        try {
+            const { data } = await sendConnectionRequest(receiverId);
+            if (data.status === 200) {
+                toast.success(data.message || "Request sent");
+                await reloadConnections(myUserId());
+            } else {
+                toast.error(data.message || "Could not send request");
+            }
+        } catch (e) {
+            toast.error(e?.response?.data?.message || e?.message || "Could not send request");
+        } finally {
+            setConnectBusyId(null);
+        }
+    };
+
+    const handleRespondRequest = async (connectionId, status) => {
+        try {
+            const { data } = await respondToConnectionRequest(connectionId, status);
+            if (data.status === 200) {
+                toast.success(data.message || "Updated");
+                await reloadConnections(myUserId());
+            } else {
+                toast.error(data.message || "Could not update request");
+            }
+        } catch (e) {
+            toast.error(e?.response?.data?.message || e?.message || "Could not update request");
+        }
     };
 
     return (
         <div className="max-w-4xl mx-auto">
 
             {/* ── Save toast ── */}
-            {toast && (
+            {showSaveToast && (
                 <div className="fixed top-6 right-6 z-50 flex items-center gap-2.5 bg-[#1e0a0a] text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-medium animate-slide-in">
                     <Check size={16} className="text-green-400" /> Profile updated successfully!
                 </div>
+            )}
+
+            {profileLoading && (
+                <p className="text-sm text-[#9a7070] mb-4">Loading your profile…</p>
             )}
 
             {/* ── Cover + Avatar ── */}
@@ -431,8 +591,12 @@ export default function UserProfile() {
 
                 {/* Avatar */}
                 <div className="absolute -bottom-12 left-6 group">
-                    <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-[#e8a090] to-[#c0392b] flex items-center justify-center text-2xl font-bold text-white ring-4 ring-white shadow-xl">
-                        {user.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                    <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-[#e8a090] to-[#c0392b] flex items-center justify-center text-2xl font-bold text-white ring-4 ring-white shadow-xl overflow-hidden">
+                        {user.profilePicUrl ? (
+                            <img src={user.profilePicUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                            user.name.split(" ").map(n => n[0]).join("").slice(0, 2)
+                        )}
                     </div>
                     <button
                         onClick={() => setEdit(true)}
@@ -485,7 +649,7 @@ export default function UserProfile() {
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-6">
                 {STATS.map(({ label, value }) => (
                     <div key={label} className="bg-white rounded-2xl border border-[#f0e4db] p-3 text-center shadow-sm hover:shadow-md transition-shadow">
-                        <p className="text-xl font-black text-[#7a1a1a]">{value}</p>
+                        <p className="text-xl font-black text-[#7a1a1a]">{label === "Connections" ? acceptedPeers.length : value}</p>
                         <p className="text-[10px] text-[#9a7070] font-medium mt-0.5">{label}</p>
                     </div>
                 ))}
@@ -646,31 +810,165 @@ export default function UserProfile() {
 
             {/* ══════════ CONNECTIONS ══════════ */}
             {activeTab === "Connections" && (
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                        <p className="text-sm text-[#9a7070] font-medium">{CONNECTIONS.length} connections</p>
+                <div className="space-y-6">
+                    <div className="bg-white rounded-2xl border border-[#f0e4db] p-5 shadow-sm space-y-3">
+                        <h3 className="font-bold text-[#1e0a0a] text-sm flex items-center gap-2">
+                            <Users size={16} className="text-[#7a1a1a]" /> Send a connection request
+                        </h3>
+                        <p className="text-xs text-[#9a7070]">Search travelers by username and invite them to connect.</p>
+                        <div className="flex gap-2 flex-col sm:flex-row">
+                            <input
+                                className="flex-1 border border-[#e8d5cc] rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#7a1a1a]/15"
+                                placeholder="Search by name…"
+                                value={findName}
+                                onChange={(e) => setFindName(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && handleSearchTravelers()}
+                            />
+                            <button
+                                type="button"
+                                onClick={handleSearchTravelers}
+                                disabled={searchBusy}
+                                className="px-4 py-2 rounded-xl bg-[#7a1a1a] text-white text-sm font-semibold hover:bg-[#5a0e0e] disabled:opacity-50"
+                            >
+                                {searchBusy ? "Searching…" : "Search"}
+                            </button>
+                        </div>
+                        {searchResults.length > 0 && (
+                            <ul className="divide-y divide-[#f5ede8] border border-[#f0e4db] rounded-xl overflow-hidden">
+                                {searchResults.map((u) => {
+                                    const uid = u._id;
+                                    const isSelf = user._id && String(uid) === String(user._id);
+                                    return (
+                                        <li key={String(uid)} className="flex items-center gap-3 px-3 py-2.5 bg-[#fdf8f4]">
+                                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#e8a090] to-[#c0392b] text-white text-xs font-bold flex items-center justify-center shrink-0 overflow-hidden">
+                                                {u.profilePic ? (
+                                                    <img src={normalizeImageSrc(u.profilePic)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                ) : (
+                                                    (u.username || "?").slice(0, 2).toUpperCase()
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-semibold text-[#1e0a0a] truncate">{u.username}</p>
+                                                <p className="text-[11px] text-[#9a7070] truncate">{u.location || "—"}</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                disabled={isSelf || connectBusyId === String(uid)}
+                                                onClick={() => handleSendRequest(uid)}
+                                                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#7a1a1a] text-white disabled:opacity-40 hover:bg-[#5a0e0e]"
+                                            >
+                                                {isSelf ? "You" : connectBusyId === String(uid) ? "…" : "Connect"}
+                                            </button>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        )}
                     </div>
-                    <div className="grid sm:grid-cols-2 gap-3">
-                        {CONNECTIONS.map(c => (
-                            <div key={c.handle} className="bg-white rounded-2xl border border-[#f0e4db] p-4 shadow-sm flex items-center gap-3 hover:shadow-md transition-shadow">
-                                <div className="relative shrink-0">
-                                    <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${c.avatarBg} flex items-center justify-center text-sm font-bold text-white ring-2 ring-white shadow`}>
-                                        {c.avatar}
+
+                    {receivedReqs.length > 0 && (
+                        <div className="space-y-3">
+                            <p className="text-sm font-semibold text-[#1e0a0a]">Pending requests for you</p>
+                            {receivedReqs.map((req) => {
+                                const sender = req.senderId;
+                                const s = sender && typeof sender === "object" ? sender : {};
+                                const name = s.username || "Traveler";
+                                return (
+                                    <div
+                                        key={String(req._id)}
+                                        className="bg-white rounded-2xl border border-[#f0e4db] p-4 shadow-sm flex flex-wrap items-center gap-3 justify-between"
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className="w-11 h-11 rounded-full bg-gradient-to-br from-rose-400 to-pink-600 text-white text-xs font-bold flex items-center justify-center shrink-0 overflow-hidden">
+                                                {s.profilePic ? (
+                                                    <img src={normalizeImageSrc(s.profilePic)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                ) : (
+                                                    name.slice(0, 2).toUpperCase()
+                                                )}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-bold text-[#1e0a0a] truncate">{name}</p>
+                                                <p className="text-xs text-[#9a7070] truncate">{s.location || "—"}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRespondRequest(req._id, "accepted")}
+                                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700"
+                                            >
+                                                <Check size={14} /> Accept
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRespondRequest(req._id, "rejected")}
+                                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#e8d5cc] text-[#7a1a1a] text-xs font-semibold hover:bg-[#fdf8f4]"
+                                            >
+                                                <X size={14} /> Decline
+                                            </button>
+                                        </div>
                                     </div>
-                                    {c.active && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-white rounded-full" />}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-[#1e0a0a] truncate">{c.name}</p>
-                                    <p className="text-xs text-[#9a7070] truncate">{c.handle}</p>
-                                    <p className="text-xs text-[#c0857a] flex items-center gap-1 mt-0.5"><MapPin size={9} />{c.location}</p>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                    <button className="p-2 rounded-xl border border-[#e8d5cc] hover:bg-[#fdf8f4] text-[#9a7070] transition-colors">
-                                        <MessageCircle size={15} />
-                                    </button>
-                                </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {sentReqs.length > 0 && (
+                        <div className="space-y-3">
+                            <p className="text-sm font-semibold text-[#1e0a0a]">Requests you sent</p>
+                            {sentReqs.map((req) => {
+                                const rcv = req.receiverId;
+                                const r = rcv && typeof rcv === "object" ? rcv : {};
+                                const name = r.username || "Traveler";
+                                return (
+                                    <div
+                                        key={String(req._id)}
+                                        className="bg-[#fdf8f4] rounded-2xl border border-[#f0e4db] px-4 py-3 text-sm text-[#5a3030]"
+                                    >
+                                        Waiting for <span className="font-semibold text-[#1e0a0a]">{name}</span> to respond
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                            <p className="text-sm text-[#9a7070] font-medium">{acceptedPeers.length} accepted connections</p>
+                        </div>
+                        {acceptedPeers.length === 0 ? (
+                            <p className="text-sm text-[#9a7070] text-center py-8 border border-dashed border-[#e8d5cc] rounded-2xl">
+                                No connections yet. Search above or accept incoming requests.
+                            </p>
+                        ) : (
+                            <div className="grid sm:grid-cols-2 gap-3">
+                                {acceptedPeers.map((c) => (
+                                    <div
+                                        key={c.id}
+                                        className="bg-white rounded-2xl border border-[#f0e4db] p-4 shadow-sm flex items-center gap-3 hover:shadow-md transition-shadow"
+                                    >
+                                        <div className="relative shrink-0">
+                                            <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${c.avatarBg} flex items-center justify-center text-sm font-bold text-white ring-2 ring-white shadow overflow-hidden`}>
+                                                {c.profilePic ? (
+                                                    <img src={c.profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                ) : (
+                                                    c.avatar
+                                                )}
+                                            </div>
+                                            {c.active && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-white rounded-full" />}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-bold text-[#1e0a0a] truncate">{c.name}</p>
+                                            <p className="text-xs text-[#9a7070] truncate">{c.handle}</p>
+                                            <p className="text-xs text-[#c0857a] flex items-center gap-1 mt-0.5"><MapPin size={9} />{c.location}</p>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full">Connected</span>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                        ))}
+                        )}
                     </div>
                 </div>
             )}

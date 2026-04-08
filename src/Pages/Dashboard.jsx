@@ -1,8 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 import {
     Compass, LayoutDashboard, BookOpen, Users, MessageSquare,
-    UserCircle, LogOut, Bell, Menu, X, Search, MessageCircle, WandSparkles
+    UserCircle, LogOut, Bell, Menu, X, Search, MessageCircle, WandSparkles,
+    UserPlus, MapPin, Loader2,
 } from "lucide-react";
+import { searchUsers, sendConnectionRequest } from "../api/social.api.js";
+import { normalizeImageSrc } from "../utils/imageUrl.js";
 import DashboardHome from "../Components/DasboardHome";
 import ShareBlog from "../Components/ShareBlog";
 import FindCompanions from "../Components/FindCompanions";
@@ -38,14 +43,109 @@ const Placeholder = ({ label }) => (
     </div>
 );
 
+function readSessionUser() {
+    try {
+        return JSON.parse(localStorage.getItem("user") || "null");
+    } catch {
+        return null;
+    }
+}
+
 // ── Dashboard Shell ───────────────────────────────────────────────────────────
 export default function Dashboard() {
     const [active, setActive] = useState("dashboard");
     const [sidebarOpen, setSidebar] = useState(false);
+    const [sessionUser, setSessionUser] = useState(readSessionUser);
+    const routerNavigate = useNavigate();
+
+    const [userSearch, setUserSearch] = useState("");
+    const [userResults, setUserResults] = useState([]);
+    const [userSearchOpen, setUserSearchOpen] = useState(false);
+    const [userSearchLoading, setUserSearchLoading] = useState(false);
+    const [connectBusyId, setConnectBusyId] = useState(null);
+    const userSearchRef = useRef(null);
 
     const currentLabel = NAV_ITEMS.find((n) => n.id === active)?.label ?? "Dashboard";
 
     const navigate = (id) => { setActive(id); setSidebar(false); };
+
+    useEffect(() => {
+        const syncUser = () => setSessionUser(readSessionUser());
+        window.addEventListener("travelmates:user-updated", syncUser);
+        return () => window.removeEventListener("travelmates:user-updated", syncUser);
+    }, []);
+
+    useEffect(() => {
+        setSessionUser(readSessionUser());
+    }, [active]);
+
+    useEffect(() => {
+        const q = userSearch.trim();
+        if (!q) {
+            setUserResults([]);
+            setUserSearchOpen(false);
+            return;
+        }
+        const timer = setTimeout(async () => {
+            setUserSearchOpen(true);
+            setUserSearchLoading(true);
+            setUserResults([]);
+            try {
+                const { data } = await searchUsers({ name: q, limit: 12, page: 1 });
+                if (data.status === 200) {
+                    setUserResults(data.users || []);
+                } else {
+                    toast.error(data.message || "Search failed");
+                }
+            } catch {
+                toast.error("Search failed");
+            } finally {
+                setUserSearchLoading(false);
+            }
+        }, 360);
+        return () => clearTimeout(timer);
+    }, [userSearch]);
+
+    useEffect(() => {
+        const onDoc = (e) => {
+            if (userSearchRef.current && !userSearchRef.current.contains(e.target)) {
+                setUserSearchOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", onDoc);
+        return () => document.removeEventListener("mousedown", onDoc);
+    }, []);
+
+    const handleSendConnectFromSearch = async (receiverId) => {
+        setConnectBusyId(String(receiverId));
+        try {
+            const { data } = await sendConnectionRequest(receiverId);
+            if (data.status === 200) {
+                toast.success(data.message || "Connection request sent");
+            } else {
+                toast.error(data.message || "Could not send request");
+            }
+        } catch (e) {
+            toast.error(e?.response?.data?.message || e?.message || "Could not send request");
+        } finally {
+            setConnectBusyId(null);
+        }
+    };
+
+    const handleLogout = () => {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        toast.success("Logged out");
+        routerNavigate("/login");
+    };
+
+    const displayName = sessionUser?.username || "Traveler";
+    const initials = displayName
+        .split(/\s+/)
+        .map((w) => w[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase() || "TM";
 
     return (
         <div className="flex h-screen bg-[#fdf8f4] overflow-hidden">
@@ -112,16 +212,31 @@ export default function Dashboard() {
                         onClick={() => navigate("profile")}
                         className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/6 hover:bg-white/10 transition-colors w-full text-left"
                     >
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#e8a090] to-[#c0392b] flex items-center justify-center text-sm font-bold text-white shrink-0 border-2 border-white/15">
-                            AK
-                        </div>
+                        {sessionUser?.profilePic ? (
+                            <img
+                                src={normalizeImageSrc(sessionUser.profilePic)}
+                                alt=""
+                                className="w-9 h-9 rounded-full object-cover shrink-0 border-2 border-white/15"
+                                referrerPolicy="no-referrer"
+                            />
+                        ) : (
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#e8a090] to-[#c0392b] flex items-center justify-center text-sm font-bold text-white shrink-0 border-2 border-white/15">
+                                {initials}
+                            </div>
+                        )}
                         <div className="min-w-0">
-                            <p className="text-white text-sm font-semibold truncate">Arjun Kulkarni</p>
-                            <p className="text-white/40 text-[10.5px] truncate">Solo Traveler · 12 trips</p>
+                            <p className="text-white text-sm font-semibold truncate">{displayName}</p>
+                            <p className="text-white/40 text-[10.5px] truncate">
+                                {sessionUser?.location || "travelMates"}
+                            </p>
                         </div>
                     </button>
 
-                    <button className="flex items-center gap-3 px-3.5 py-2 rounded-xl text-white/40 hover:text-[#e8a090] hover:bg-[#e8a090]/8 transition-colors text-sm font-medium w-full">
+                    <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="flex items-center gap-3 px-3.5 py-2 rounded-xl text-white/40 hover:text-[#e8a090] hover:bg-[#e8a090]/8 transition-colors text-sm font-medium w-full"
+                    >
                         <LogOut size={16} />
                         Log out
                     </button>
@@ -153,13 +268,113 @@ export default function Dashboard() {
 
                     {/* Actions */}
                     <div className="flex items-center gap-2">
-                        {/* Search */}
-                        <div className="hidden sm:flex items-center gap-2 bg-[#f0e4db] rounded-full px-3.5 py-2 border border-transparent focus-within:border-[#e8d5cc] transition-colors">
-                            <Search size={13} className="text-[#9a7070] shrink-0" />
-                            <input
-                                className="bg-transparent outline-none text-sm text-[#1e0a0a] placeholder:text-[#9a7070] w-44"
-                                placeholder="Search destinations…"
-                            />
+                        {/* Traveler search — searchUser API + connection request */}
+                        <div className="relative min-w-0" ref={userSearchRef}>
+                            <div className="flex items-center gap-2 bg-[#f0e4db] rounded-full px-3 py-2 sm:px-3.5 border border-transparent focus-within:border-[#c0857a] focus-within:ring-1 focus-within:ring-[#c0857a]/30 transition-colors w-[140px] sm:w-52 lg:w-64">
+                                {userSearchLoading ? (
+                                    <Loader2 size={14} className="text-[#9a7070] shrink-0 animate-spin" />
+                                ) : (
+                                    <Search size={13} className="text-[#9a7070] shrink-0" />
+                                )}
+                                <input
+                                    type="search"
+                                    autoComplete="off"
+                                    className="bg-transparent outline-none text-sm text-[#1e0a0a] placeholder:text-[#9a7070] min-w-0 flex-1"
+                                    placeholder="Find travelers…"
+                                    value={userSearch}
+                                    onChange={(e) => setUserSearch(e.target.value)}
+                                    onFocus={() => {
+                                        if (userSearch.trim()) setUserSearchOpen(true);
+                                    }}
+                                />
+                                {userSearch && (
+                                    <button
+                                        type="button"
+                                        aria-label="Clear search"
+                                        className="p-0.5 rounded-full hover:bg-[#e8d5cc] text-[#9a7070]"
+                                        onClick={() => {
+                                            setUserSearch("");
+                                            setUserResults([]);
+                                            setUserSearchOpen(false);
+                                        }}
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                )}
+                            </div>
+
+                            {userSearchOpen && userSearch.trim() && (
+                                <div className="absolute right-0 top-full mt-1.5 w-[min(100vw-2rem,20rem)] sm:w-80 max-h-[min(70vh,20rem)] overflow-y-auto rounded-2xl border border-[#e8d5cc] bg-white shadow-xl z-50 py-1">
+                                    {userSearchLoading ? (
+                                        <p className="px-4 py-6 text-sm text-[#9a7070] text-center flex items-center justify-center gap-2">
+                                            <Loader2 size={16} className="animate-spin" /> Searching…
+                                        </p>
+                                    ) : userResults.length === 0 ? (
+                                        <p className="px-4 py-6 text-sm text-[#9a7070] text-center">
+                                            No travelers match “{userSearch.trim()}”
+                                        </p>
+                                    ) : (
+                                        <ul className="divide-y divide-[#f5ede8]">
+                                            {userResults.map((u) => {
+                                                const uid = u._id;
+                                                const isSelf =
+                                                    sessionUser?._id &&
+                                                    String(uid) === String(sessionUser._id);
+                                                return (
+                                                    <li
+                                                        key={String(uid)}
+                                                        className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#fdf8f4]"
+                                                    >
+                                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#e8a090] to-[#c0392b] text-white text-xs font-bold flex items-center justify-center shrink-0 overflow-hidden">
+                                                            {u.profilePic ? (
+                                                                <img
+                                                                    src={normalizeImageSrc(u.profilePic)}
+                                                                    alt=""
+                                                                    className="w-full h-full object-cover"
+                                                                    referrerPolicy="no-referrer"
+                                                                />
+                                                            ) : (
+                                                                (u.username || "?")
+                                                                    .slice(0, 2)
+                                                                    .toUpperCase()
+                                                            )}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-semibold text-[#1e0a0a] truncate">
+                                                                {u.username}
+                                                            </p>
+                                                            {u.location && (
+                                                                <p className="text-[11px] text-[#9a7070] truncate flex items-center gap-1">
+                                                                    <MapPin size={10} className="shrink-0" />
+                                                                    {u.location}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            disabled={
+                                                                isSelf ||
+                                                                connectBusyId === String(uid)
+                                                            }
+                                                            onClick={() =>
+                                                                handleSendConnectFromSearch(uid)
+                                                            }
+                                                            className="shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-[#7a1a1a] text-white hover:bg-[#5a0e0e] disabled:opacity-45 disabled:cursor-not-allowed"
+                                                        >
+                                                            {connectBusyId === String(uid) ? (
+                                                                <Loader2 size={12} className="animate-spin" />
+                                                            ) : (
+                                                                <UserPlus size={12} />
+                                                            )}
+                                                            {isSelf ? "You" : "Connect"}
+                                                        </button>
+                                                    </li>
+                                                );
+                                            })}
+                                        </ul>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Bell */}
@@ -171,9 +386,13 @@ export default function Dashboard() {
                         {/* Avatar */}
                         <button
                             onClick={() => navigate("profile")}
-                            className="w-9 h-9 rounded-full bg-gradient-to-br from-[#e8a090] to-[#c0392b] flex items-center justify-center text-sm font-bold text-white border-2 border-[#e8d5cc] hover:border-[#a33030] hover:scale-105 transition-all"
+                            className="w-9 h-9 rounded-full bg-gradient-to-br from-[#e8a090] to-[#c0392b] flex items-center justify-center text-sm font-bold text-white border-2 border-[#e8d5cc] hover:border-[#a33030] hover:scale-105 transition-all overflow-hidden"
                         >
-                            AK
+                            {sessionUser?.profilePic ? (
+                                <img src={normalizeImageSrc(sessionUser.profilePic)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                                initials
+                            )}
                         </button>
                     </div>
                 </header>

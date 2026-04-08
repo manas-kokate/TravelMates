@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback } from "react";
+import { toast } from "react-toastify";
+import { createBlog } from "../api/blog.api.js";
 import {
     ImagePlus, MapPin, Tag, Type, AlignLeft, X, ChevronDown,
     Eye, Send, Save, Plus, GripVertical, Smile, Bold, Italic,
@@ -46,7 +48,7 @@ function ImageUploadZone({ images, onAdd, onRemove, onSetCover, coverIdx }) {
         Array.from(files).forEach((file) => {
             if (!file.type.startsWith("image/")) return;
             const url = URL.createObjectURL(file);
-            onAdd({ url, name: file.name, size: file.size });
+            onAdd({ url, name: file.name, size: file.size, file });
         });
     };
 
@@ -289,6 +291,7 @@ export default function ShareBlog() {
     const [tagInput, setTagInput] = useState("");
     const [locOpen, setLocOpen] = useState(false);
     const [submitted, setSubmitted] = useState(false);
+    const [publishing, setPublishing] = useState(false);
     const [visMenu, setVisMenu] = useState(false);
 
     const [form, setForm] = useState({
@@ -324,10 +327,43 @@ export default function ShareBlog() {
 
     const canPublish = form.title.trim() && form.body.trim();
 
-    const handlePublish = () => {
-        if (!canPublish) return;
-        setSubmitted(true);
-        // 🔌 Replace with your API call: POST /api/blogs { ...form, images }
+    const handlePublish = async () => {
+        if (!canPublish || publishing) return;
+        setPublishing(true);
+        try {
+            const fd = new FormData();
+            fd.append("title", form.title.trim());
+            fd.append("story", form.body.trim());
+            if (form.location.trim()) fd.append("location", form.location.trim());
+            if (form.category) fd.append("category", form.category);
+            if (form.mood) fd.append("tripMood", form.mood);
+            if (form.tags.length) fd.append("tags", form.tags.join(","));
+
+            const ordered = [...images];
+            if (ordered.length > 0 && coverIdx > 0 && coverIdx < ordered.length) {
+                const [cover] = ordered.splice(coverIdx, 1);
+                ordered.unshift(cover);
+            }
+            ordered.forEach((img) => {
+                if (img.file) fd.append("images", img.file);
+            });
+
+            const { data } = await createBlog(fd);
+            if (data?.success) {
+                toast.success("Blog published!");
+                setSubmitted(true);
+            } else {
+                toast.error(data?.message || "Could not publish blog");
+            }
+        } catch (e) {
+            toast.error(
+                e?.response?.data?.message ||
+                    e?.message ||
+                    "Could not publish blog"
+            );
+        } finally {
+            setPublishing(false);
+        }
     };
 
     if (submitted) {
@@ -610,13 +646,13 @@ export default function ShareBlog() {
                         <div className="space-y-2.5">
                             <button
                                 onClick={handlePublish}
-                                disabled={!canPublish}
-                                className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all ${canPublish
+                                disabled={!canPublish || publishing}
+                                className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all ${canPublish && !publishing
                                     ? "bg-[#7a1a1a] text-white hover:bg-[#5a0e0e] shadow-md hover:shadow-lg active:scale-[0.98]"
                                     : "bg-[#e8d5cc] text-[#b09090] cursor-not-allowed"
                                     }`}
                             >
-                                <Send size={15} /> Publish Blog
+                                <Send size={15} /> {publishing ? "Publishing…" : "Publish Blog"}
                             </button>
                             <button className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium text-sm text-[#7a1a1a] border border-[#e8d5cc] hover:bg-[#fdf8f4] transition-colors">
                                 <Save size={15} /> Save as Draft

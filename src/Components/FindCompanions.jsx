@@ -1,62 +1,21 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  MapPin, Navigation, Users, X, MessageCircle, UserPlus,
-  Wifi, WifiOff, ChevronRight, Filter, Star, Globe,
-  AlertCircle, Locate, SlidersHorizontal, Heart, Shield,
-  Compass, RefreshCw,
+  MapPin, Users, X, MessageCircle, UserPlus,
+  Wifi, Filter, Star, Globe,
+  Locate, SlidersHorizontal, Shield,
+  Compass, RefreshCw, Loader2,
 } from "lucide-react";
+import { toast } from "react-toastify";
+import { discoverTravelers, sendConnectionRequest } from "../api/social.api.js";
+import { normalizeImageSrc } from "../utils/imageUrl.js";
 
 // ── Leaflet loaded via CDN in useEffect ──────────────────────────────────────
-// No npm install needed — loaded dynamically
-
-// ── Mock nearby travelers (offset from user's real position) ─────────────────
-const MOCK_TRAVELERS = [
-  {
-    id: 1, name: "Priya Sharma", handle: "@priyatravels",
-    avatar: "PS", avatarBg: "from-rose-400 to-pink-600",
-    bio: "Solo traveler · 18 countries", interest: ["Hiking", "Photography"],
-    rating: 4.9, trips: 18, verified: true, active: true,
-    offsetLat: 0.003, offsetLng: 0.004,
-  },
-  {
-    id: 2, name: "Rahul Kapoor", handle: "@rahul_onroad",
-    avatar: "RK", avatarBg: "from-amber-400 to-orange-500",
-    bio: "Backpacker · Budget travel expert", interest: ["Food", "Culture"],
-    rating: 4.7, trips: 12, verified: true, active: true,
-    offsetLat: -0.002, offsetLng: 0.006,
-  },
-  {
-    id: 3, name: "Ananya Mehta", handle: "@ananya.wanders",
-    avatar: "AM", avatarBg: "from-teal-400 to-cyan-600",
-    bio: "Adventure seeker · Trek lover", interest: ["Trekking", "Camping"],
-    rating: 4.8, trips: 24, verified: false, active: true,
-    offsetLat: 0.005, offsetLng: -0.003,
-  },
-  {
-    id: 4, name: "Vikram Nair", handle: "@vikram_nomad",
-    avatar: "VN", avatarBg: "from-violet-400 to-purple-600",
-    bio: "Digital nomad · 3 years on road", interest: ["Art", "Food"],
-    rating: 4.6, trips: 31, verified: true, active: false,
-    offsetLat: -0.006, offsetLng: -0.005,
-  },
-  {
-    id: 5, name: "Sneha Iyer", handle: "@sneha.roams",
-    avatar: "SI", avatarBg: "from-lime-400 to-green-600",
-    bio: "Wildlife photographer", interest: ["Wildlife", "Photography"],
-    rating: 4.9, trips: 9, verified: true, active: true,
-    offsetLat: 0.001, offsetLng: -0.007,
-  },
-  {
-    id: 6, name: "Dev Malhotra", handle: "@devexplores",
-    avatar: "DM", avatarBg: "from-sky-400 to-blue-600",
-    bio: "Road trip enthusiast", interest: ["Road Trip", "Music"],
-    rating: 4.5, trips: 15, verified: false, active: false,
-    offsetLat: -0.008, offsetLng: 0.002,
-  },
-];
 
 const RADIUS_OPTIONS = [1, 2, 5, 10, 25];
-const INTEREST_FILTERS = ["All", "Hiking", "Food", "Photography", "Trekking", "Culture", "Wildlife"];
+const INTEREST_FILTERS = [
+  "All", "Trekking", "Photography", "Food", "Culture", "Wildlife",
+  "Budget Travel", "Hiking", "Street Food", "Backpacking",
+];
 
 // ── Haversine distance (km) ───────────────────────────────────────────────────
 function getDistance(lat1, lng1, lat2, lng2) {
@@ -71,10 +30,83 @@ function getDistance(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// ── Companion Card ────────────────────────────────────────────────────────────
-function CompanionCard({ traveler, dist, onSelect, selected }) {
-  const [requested, setRequested] = useState(false);
+const AVATAR_GRADIENTS = [
+  "from-rose-400 to-pink-600",
+  "from-amber-400 to-orange-500",
+  "from-teal-400 to-cyan-600",
+  "from-violet-400 to-purple-600",
+  "from-lime-400 to-green-600",
+  "from-sky-400 to-blue-600",
+];
 
+function gradientForId(id) {
+  const s = String(id);
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return AVATAR_GRADIENTS[h % AVATAR_GRADIENTS.length];
+}
+
+/** Stable pseudo-position within maxKm of center (for map pins — not GPS). */
+function latLngFromUserId(userId, centerLat, centerLng, maxKm) {
+  const s = String(userId);
+  let hash = 2166136261;
+  for (let i = 0; i < s.length; i++) hash = Math.imul(hash ^ s.charCodeAt(i), 16777619);
+  const u = (hash >>> 0) / 4294967296;
+  const v = ((hash >>> 16) & 0xffff) / 65536;
+  const bearing = u * 2 * Math.PI;
+  const distKm = 0.12 * maxKm + v * maxKm * 0.88;
+  const R = 6371;
+  const δ = distKm / R;
+  const φ1 = (centerLat * Math.PI) / 180;
+  const λ1 = (centerLng * Math.PI) / 180;
+  const φ2 = Math.asin(
+    Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(bearing)
+  );
+  const λ2 =
+    λ1 +
+    Math.atan2(
+      Math.sin(bearing) * Math.sin(δ) * Math.cos(φ1),
+      Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2)
+    );
+  return { lat: (φ2 * 180) / Math.PI, lng: (λ2 * 180) / Math.PI };
+}
+
+function mapApiUserToTraveler(u, userPos, radiusKm) {
+  const id = String(u._id);
+  const { lat, lng } = latLngFromUserId(id, userPos.lat, userPos.lng, radiusKm);
+  const dist = getDistance(userPos.lat, userPos.lng, lat, lng);
+  const interests =
+    Array.isArray(u.interests) && u.interests.length ? u.interests : ["Travel"];
+  const picRaw = u.profilePic ? normalizeImageSrc(u.profilePic) : "";
+  return {
+    id,
+    name: u.username || "Traveler",
+    handle: `@${(u.username || "user").replace(/\s+/g, "").toLowerCase()}`,
+    avatar: (u.username || "?").slice(0, 2).toUpperCase(),
+    profilePic: picRaw || null,
+    avatarBg: gradientForId(id),
+    bio: interests.slice(0, 3).join(" · "),
+    interest: interests,
+    rating: Math.min(5, 4 + ((id.charCodeAt(0) || 0) % 10) / 10),
+    trips: 5 + ((id.length * 7) % 28),
+    verified: !u.isBot,
+    active: (parseInt(id.slice(-2), 16) || 0) % 3 !== 0,
+    lat,
+    lng,
+    dist,
+  };
+}
+
+// ── Companion Card ────────────────────────────────────────────────────────────
+function CompanionCard({
+  traveler,
+  dist,
+  onSelect,
+  selected,
+  onConnect,
+  requestSent,
+  connectBusy,
+}) {
   return (
     <div
       onClick={() => onSelect(traveler)}
@@ -84,8 +116,17 @@ function CompanionCard({ traveler, dist, onSelect, selected }) {
       <div className="flex items-start gap-3">
         {/* Avatar */}
         <div className="relative shrink-0">
-          <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${traveler.avatarBg} flex items-center justify-center text-sm font-bold text-white ring-2 ring-white shadow`}>
-            {traveler.avatar}
+          <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${traveler.avatarBg} flex items-center justify-center text-sm font-bold text-white ring-2 ring-white shadow overflow-hidden`}>
+            {traveler.profilePic ? (
+              <img
+                src={traveler.profilePic}
+                alt=""
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              traveler.avatar
+            )}
           </div>
           {traveler.active && (
             <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-white rounded-full" />
@@ -135,17 +176,25 @@ function CompanionCard({ traveler, dist, onSelect, selected }) {
       {/* Actions */}
       <div className="flex gap-2 mt-3 pt-3 border-t border-[#f5ede8]">
         <button
-          onClick={(e) => { e.stopPropagation(); setRequested(r => !r); }}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all ${requested
+          onClick={(e) => {
+            e.stopPropagation();
+            onConnect?.(traveler.id);
+          }}
+          disabled={requestSent || connectBusy}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all ${requestSent
               ? "bg-[#f0e4db] text-[#7a1a1a]"
-              : "bg-[#7a1a1a] text-white hover:bg-[#5a0e0e]"
+              : "bg-[#7a1a1a] text-white hover:bg-[#5a0e0e] disabled:opacity-50"
             }`}
         >
-          <UserPlus size={13} />
-          {requested ? "Requested" : "Connect"}
+          {connectBusy ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
+          {requestSent ? "Requested" : "Connect"}
         </button>
         <button
-          onClick={(e) => e.stopPropagation()}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            toast.info("Open Chats after you’re connected");
+          }}
           className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border border-[#e8d5cc] text-[#5a3030] hover:bg-[#fdf8f4] transition-colors"
         >
           <MessageCircle size={13} /> Message
@@ -166,12 +215,15 @@ export default function FindCompanions() {
   const [geoStatus, setGeoStatus] = useState("idle");    // idle | requesting | granted | denied | unsupported
   const [userPos, setUserPos] = useState(null);
   const [travelers, setTravelers] = useState([]);
+  const [travelersLoading, setTravelersLoading] = useState(false);
   const [selected, setSelected] = useState(null);
   const [radius, setRadius] = useState(10);
   const [interestFilter, setFilter] = useState("All");
   const [showPanel, setShowPanel] = useState(true);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [isRefreshing, setRefreshing] = useState(false);
+  const [pendingConnectIds, setPendingConnectIds] = useState(() => new Set());
+  const [connectBusyId, setConnectBusyId] = useState(null);
 
   // ── Load Leaflet from CDN ─────────────────────────────────────────────────
   useEffect(() => {
@@ -209,17 +261,50 @@ export default function FindCompanions() {
   // ── Auto-request on mount ─────────────────────────────────────────────────
   useEffect(() => { requestLocation(); }, [requestLocation]);
 
-  // ── Compute nearby travelers from userPos ─────────────────────────────────
-  useEffect(() => {
+  const loadTravelers = useCallback(async () => {
     if (!userPos) return;
-    const withDist = MOCK_TRAVELERS.map((t) => ({
-      ...t,
-      lat: userPos.lat + t.offsetLat,
-      lng: userPos.lng + t.offsetLng,
-      dist: getDistance(userPos.lat, userPos.lng, userPos.lat + t.offsetLat, userPos.lng + t.offsetLng),
-    })).sort((a, b) => a.dist - b.dist);
-    setTravelers(withDist);
-  }, [userPos]);
+    setTravelersLoading(true);
+    try {
+      const params = { limit: 50, page: 1 };
+      if (interestFilter !== "All") params.interest = interestFilter;
+      const { data } = await discoverTravelers(params);
+      if (data.status !== 200) {
+        toast.error(data.message || "Could not load travelers");
+        setTravelers([]);
+        return;
+      }
+      const mapped = (data.users || []).map((u) =>
+        mapApiUserToTraveler(u, userPos, radius)
+      );
+      setTravelers(mapped.sort((a, b) => a.dist - b.dist));
+    } catch {
+      toast.error("Could not load travelers");
+      setTravelers([]);
+    } finally {
+      setTravelersLoading(false);
+    }
+  }, [userPos, interestFilter, radius]);
+
+  useEffect(() => {
+    void loadTravelers();
+  }, [loadTravelers]);
+
+  const handleConnect = useCallback(async (receiverId) => {
+    setConnectBusyId(String(receiverId));
+    try {
+      const { data } = await sendConnectionRequest(receiverId);
+      if (data.status === 200) {
+        toast.success(data.message || "Connection request sent");
+        setPendingConnectIds((prev) => new Set(prev).add(String(receiverId)));
+      } else {
+        toast.error(data.message || "Could not send request");
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.message || e?.message || "Could not send request");
+    } finally {
+      setConnectBusyId(null);
+    }
+  }, []);
 
   // ── Init / update map ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -297,12 +382,15 @@ export default function FindCompanions() {
       const colorKey = Object.keys(colorMap).find(k => t.avatarBg.includes(k));
       const color = colorMap[colorKey] || "#7a1a1a";
 
+      const markerFace = t.profilePic
+        ? `<img src="${encodeURI(t.profilePic)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%" referrerpolicy="no-referrer" />`
+        : `<span style="font-size:11px;font-weight:700;color:white">${t.avatar}</span>`;
       const icon = L.divIcon({
         className: "",
         html: `
           <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer">
-            <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,${color},${color}cc);border:3px solid white;box-shadow:0 3px 10px rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white">
-              ${t.avatar}
+            <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,${color},${color}cc);border:3px solid white;box-shadow:0 3px 10px rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;overflow:hidden">
+              ${markerFace}
             </div>
             <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid white;margin-top:-1px;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.15))"></div>
           </div>`,
@@ -346,8 +434,8 @@ export default function FindCompanions() {
 
   const handleRefresh = () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1200);
     requestLocation();
+    void loadTravelers().finally(() => setRefreshing(false));
   };
 
   const filtered = travelers.filter((t) => {
@@ -425,9 +513,14 @@ export default function FindCompanions() {
               Find Companions
             </div>
             <span className="text-xs bg-[#f0e4db] text-[#7a1a1a] font-semibold px-2 py-0.5 rounded-full">
-              {filtered.length} nearby
+              {travelersLoading ? "…" : filtered.length} nearby
             </span>
           </div>
+          {travelersLoading && (
+            <span className="flex items-center gap-1 text-xs text-[#9a7070]">
+              <Loader2 size={12} className="animate-spin" /> Loading travelers…
+            </span>
+          )}
 
           {/* Location status */}
           <div className="flex items-center gap-1.5 text-xs text-green-600 bg-green-50 px-2.5 py-1 rounded-full">
@@ -501,8 +594,17 @@ export default function FindCompanions() {
                   <X size={14} />
                 </button>
                 <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${selected.avatarBg} flex items-center justify-center text-sm font-bold text-white ring-2 ring-white shadow`}>
-                    {selected.avatar}
+                  <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${selected.avatarBg} flex items-center justify-center text-sm font-bold text-white ring-2 ring-white shadow overflow-hidden`}>
+                    {selected.profilePic ? (
+                      <img
+                        src={selected.profilePic}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      selected.avatar
+                    )}
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5">
@@ -522,10 +624,27 @@ export default function FindCompanions() {
                   </div>
                 </div>
                 <div className="flex gap-2 mt-3">
-                  <button className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-[#7a1a1a] text-white rounded-xl text-xs font-semibold hover:bg-[#5a0e0e] transition-colors">
-                    <UserPlus size={13} /> Connect
+                  <button
+                    type="button"
+                    disabled={
+                      pendingConnectIds.has(String(selected.id)) ||
+                      connectBusyId === String(selected.id)
+                    }
+                    onClick={() => handleConnect(selected.id)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-[#7a1a1a] text-white rounded-xl text-xs font-semibold hover:bg-[#5a0e0e] transition-colors disabled:opacity-50"
+                  >
+                    {connectBusyId === String(selected.id) ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <UserPlus size={13} />
+                    )}
+                    {pendingConnectIds.has(String(selected.id)) ? "Requested" : "Connect"}
                   </button>
-                  <button className="flex-1 flex items-center justify-center gap-1.5 py-2 border border-[#e8d5cc] text-[#5a3030] rounded-xl text-xs font-semibold hover:bg-[#fdf8f4] transition-colors">
+                  <button
+                    type="button"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 border border-[#e8d5cc] text-[#5a3030] rounded-xl text-xs font-semibold hover:bg-[#fdf8f4] transition-colors"
+                    onClick={() => toast.info("Open Chats after you’re connected")}
+                  >
                     <MessageCircle size={13} /> Message
                   </button>
                 </div>
@@ -574,6 +693,9 @@ export default function FindCompanions() {
                       dist={t.dist}
                       onSelect={setSelected}
                       selected={selected?.id === t.id}
+                      onConnect={handleConnect}
+                      requestSent={pendingConnectIds.has(String(t.id))}
+                      connectBusy={connectBusyId === String(t.id)}
                     />
                   ))
                 )}
