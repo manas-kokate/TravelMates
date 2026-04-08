@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Home } from "lucide-react";
-import { useLocation } from "react-router-dom";
+import { toast } from "react-toastify";
+import { loginUser } from "../api/auth.api";
 
 const Login = () => {
     const [form, setForm] = useState({
@@ -9,7 +10,9 @@ const Login = () => {
         password: "",
     });
 
-    const location = useLocation();
+    const [loading, setLoading] = useState(false);
+    const navigate = useNavigate(); // ✅ correct hook
+
     const handleChange = (e) => {
         setForm({
             ...form,
@@ -17,9 +20,47 @@ const Login = () => {
         });
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        location.pathname = "/dashboard";
+
+        if (!form.email || !form.password) {
+            toast.warning("Please fill all fields");
+            return;
+        }
+
+        try {
+            setLoading(true);
+
+            const res = await loginUser({
+                email: form.email,
+                password: form.password,
+            });
+
+            // ✅ validate response
+            if (!res?.data?.accessToken) {
+                console.log(res.data);
+                toast.error(res.data.message || "Invalid credentials");
+                return;
+            }
+
+            // ✅ store token
+            localStorage.setItem("token", res.data.accessToken);
+
+            toast.success(res.data.message || "Login successful!");
+
+            // ✅ navigate properly
+            navigate("/dashboard");
+
+        } catch (err) {
+            console.error(err);
+
+            toast.error(
+                err?.response?.data?.message ||
+                "Login failed"
+            );
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -42,7 +83,7 @@ const Login = () => {
                 </Link>
 
                 {/* Login Card */}
-                <div className="relative max-w-md w-full bg-[#FFF8F0] backdrop-blur-md rounded-2xl shadow-2xl p-10">
+                <div className="relative max-w-md w-full bg-[#FFF8F0] rounded-2xl shadow-2xl p-10">
 
                     <h2 className="text-3xl font-bold text-[#5E0006] text-center">
                         Welcome Back
@@ -88,9 +129,10 @@ const Login = () => {
 
                         <button
                             type="submit"
-                            className="w-full bg-[#5E0006] text-[#FFF8F0] py-3 rounded-lg font-semibold hover:scale-105 transition"
+                            disabled={loading}
+                            className="w-full bg-[#5E0006] text-[#FFF8F0] py-3 rounded-lg font-semibold hover:scale-105 transition disabled:opacity-50"
                         >
-                            <Link to="/dashboard">Login</Link>
+                            {loading ? "Logging in..." : "Login"}
                         </button>
                     </form>
 

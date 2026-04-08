@@ -9,7 +9,7 @@ import FindCompanions from "../Components/FindCompanions";
 import Chats from "../Components/Chats";
 import CommunityReviews from "../Components/CommunityReviews";
 import UserProfile from "../Components/UserProfile";
-import TripioPlanner from "../Components/TripioPlanner";
+import TripioChat from "../Components/TripioChat";
 
 // ── Nav items ─────────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
@@ -208,7 +208,7 @@ export default function Dashboard() {
                     )}
 
                     {active === "tripio" && (
-                        <TripioPlanner />
+                        <TripioChat />
                     )}
 
                 </main>

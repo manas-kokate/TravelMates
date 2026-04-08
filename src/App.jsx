@@ -12,6 +12,7 @@ import Discover from './Pages/Discover.jsx'
 import About from './Pages/About.jsx'
 import Messages from './Pages/Messages.jsx'
 import Dashboard from './Pages/Dashboard.jsx'
+import { ToastContainer } from 'react-toastify'
 
 function App() {
   const [count, setCount] = useState(0)
@@ -24,6 +25,7 @@ function App() {
     <>
 
       {!hideNavFooter && <Navbar />}
+      <ToastContainer position="top-right" autoClose={3000} theme="colored" />
 
       <div className={!hideNavFooter ? "pt-10" : ""}>
         <Routes>
